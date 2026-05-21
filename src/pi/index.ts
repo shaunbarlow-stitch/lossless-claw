@@ -34,6 +34,7 @@ import {
   releaseSharedLcm,
   type SharedLcmEntry,
 } from "./shared-init.js";
+import { registerLcmTools } from "./tools.js";
 import {
   readSessionIdFromFile,
   sessionKeyForId,
@@ -188,6 +189,7 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
 
       const sessionFile = ctx.sessionManager.getSessionFile();
 
+      let toolsRegisteredForEngine = false;
       const shared = await acquireSharedLcm({
         dbPath,
         create: () => {
@@ -209,6 +211,20 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
             log: piLog,
           });
           const engine = new LcmContextEngine(deps, database);
+          // Tools are registered once per engine instance: they read the
+          // current active binding on every execute, so we don't need to
+          // re-register them across pi session_start cycles that share
+          // this engine via shared-init.
+          registerLcmTools({
+            pi,
+            deps,
+            engine,
+            getActiveBinding: () => ({
+              sessionKey: active?.sessionKey,
+              sessionIdForEngine: active?.sessionIdForEngine,
+            }),
+          });
+          toolsRegisteredForEngine = true;
           return {
             dbPath,
             database,
@@ -223,6 +239,9 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
           };
         },
       });
+      if (toolsRegisteredForEngine) {
+        piLog.debug("lcm tools registered (lcm_grep, lcm_describe)");
+      }
 
       active = {
         sessionFile,

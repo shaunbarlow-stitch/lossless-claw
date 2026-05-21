@@ -52,6 +52,49 @@ Releases prior to the fork are recorded in [`CHANGELOG.openclaw-history.md`](./C
   observable, and shuts down cleanly. No ingest or assemble has been driven
   through pi yet because Phase 1 does not require an LLM call.
 
+### Added (Phase 3 — LCM tools)
+
+- `src/pi/tools.ts`: wraps the upstream tool factories in pi's
+  `ToolDefinition` shape and registers them via `pi.registerTool`.
+  Currently registered: `lcm_grep` (FTS5 / regex search across compacted
+  history) and `lcm_describe` (fetch a summary or file by id).
+- Each pi `execute` call constructs a fresh upstream tool with the active
+  pi session's lossless-claw key, so tool scoping reflects the current
+  conversation rather than whatever was bound at extension load time.
+- `promptSnippet` and `promptGuidelines` populated so the registered tools
+  appear in pi's default "Available tools" section and contribute
+  tool-specific guidance to the system prompt.
+
+### Not yet registered (Phase 3 scope)
+
+- `lcm_expand` and `lcm_expand_query` remain unregistered. Both rely on
+  the OpenClaw gateway subagent protocol (`callGateway`) that was removed
+  in Phase 0. `lcm_expand` is additionally gated by the engine to subagent
+  sessions, which never exist in the pi build, so even registering it
+  would produce a tool that always returned an error. Re-implementing
+  these as in-process summarizer calls is a later-phase task.
+
+### Verified at runtime (Phase 3)
+
+Resume run against the conversation built up in Phase 2's tests:
+
+  pi --session <existing.jsonl> -p "Use the lcm_grep tool to find what
+   I asked you to reply with in our first turn. Quote the snippet you
+   found verbatim."
+
+The model called `lcm_grep` twice (different patterns) and `lcm_describe`
+once, with a multi-turn agent loop visible in the assemble traces
+(`in=7 → 9 → 11 → 13` as tool-call + tool-result pairs accumulated).
+Final answer: `> "Reply only with: phase 2 v2 ok"`, a verbatim quote of
+the original user prompt from three runs ago. The full tool round-trip
+(LLM → our pi adapter → upstream tool factory → engine → SQLite → LLM)
+behaves correctly.
+
+Note: the model passed `msg#1` to `lcm_describe`, which only accepts
+`sum_*` or `file_*` ids and returned a clear "Not found" error. This
+is a UX gap in the upstream tool's prompting (grep labels matches
+`[msg#N]` but describe scopes to summaries/files), not a wiring bug.
+
 ### Added (Phase 2 — assemble + persistence)
 
 - `context` event handler in `src/pi/index.ts`. Each LLM call now routes
