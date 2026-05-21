@@ -5,7 +5,7 @@ import type { LcmConfig } from "../db/config.js";
 import type { LcmSummarizeFn } from "../summarize.js";
 import { createLcmSummarizeFromLegacyParams } from "../summarize.js";
 import type { LcmDependencies } from "../types.js";
-import { detectDoctorMarker, loadDoctorTargets, type DoctorTargetRecord } from "./lcm-doctor-shared.js";
+import { detectDoctorMarker, loadDoctorTargets, type DoctorTargetRecord } from "./shared.js";
 import { estimateTokens } from "../estimate-tokens.js";
 
 type SummaryOverride = {

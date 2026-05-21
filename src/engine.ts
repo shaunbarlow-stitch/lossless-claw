@@ -16,7 +16,7 @@ import type {
   IngestResult,
   SubagentEndReason,
   SubagentSpawnPreparation,
-} from "./openclaw-bridge.js";
+} from "./host-types.js";
 import {
   blockFromPart,
   contentFromParts,
@@ -70,7 +70,7 @@ import { SummaryStore, type ContextItemRecord } from "./store/summary-store.js";
 import { createLcmSummarizeFromLegacyParams, LcmProviderAuthError } from "./summarize.js";
 import type { LcmDependencies, StartupSessionFileCandidate } from "./types.js";
 import { estimateTokens } from "./estimate-tokens.js";
-import { createLcmDatabaseBackup } from "./plugin/lcm-db-backup.js";
+import { createLcmDatabaseBackup } from "./db-backup.js";
 import {
   DatabaseTransactionTimeoutError,
   withExclusiveDatabaseLock,

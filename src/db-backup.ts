@@ -1,7 +1,7 @@
 import { rmSync, renameSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { getFileBackedDatabasePath } from "../db/connection.js";
+import { getFileBackedDatabasePath } from "./db/connection.js";
 
 function quoteSqlString(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;

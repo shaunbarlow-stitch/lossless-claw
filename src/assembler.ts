@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ContextEngine } from "./openclaw-bridge.js";
+import type { ContextEngine } from "./host-types.js";
 import { sanitizeToolUseResultPairing } from "./transcript-repair.js";
 import type {
   ConversationStore,

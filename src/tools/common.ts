@@ -1,6 +1,4 @@
-import type { AnyAgentTool as OpenClawAnyAgentTool } from "../openclaw-bridge.js";
-
-export type AnyAgentTool = OpenClawAnyAgentTool;
+export type { AnyAgentTool } from "../host-types.js";
 
 /** Render structured payloads as deterministic text tool results. */
 export function jsonResult(payload: unknown): {

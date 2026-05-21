@@ -1,4 +1,3 @@
-import type { OpenClawPluginApi } from "./openclaw-bridge.js";
 import type { LcmDependencies } from "./types.js";
 
 export type LcmLogger = LcmDependencies["log"];
@@ -16,22 +15,20 @@ export function describeLogError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Create the LCM logger, preferring OpenClaw's file-backed runtime logger. */
-export function createLcmLogger(api: OpenClawPluginApi): LcmLogger {
-  const runtimeLogger = api.runtime.logging?.getChildLogger?.({ plugin: "lossless-claw" });
-  if (runtimeLogger) {
-    return {
-      info: (message) => runtimeLogger.info(message),
-      warn: (message) => runtimeLogger.warn(message),
-      error: (message) => runtimeLogger.error(message),
-      debug: (message) => runtimeLogger.debug?.(message),
-    };
-  }
-
+/**
+ * Create an LCM logger from a host-supplied logger object.
+ *
+ * Historically this preferred OpenClaw's file-backed runtime logger when
+ * available. After the pi-port fork, the pi adapter (Phase 1) is responsible
+ * for constructing a `LcmLogger` from `ctx.ui` / pi's logging facilities and
+ * passing it via `LcmDependencies`. This helper is retained for callers that
+ * still need a console-shaped logger.
+ */
+export function createConsoleLcmLogger(): LcmLogger {
   return {
-    info: (message) => api.logger.info(message),
-    warn: (message) => api.logger.warn(message),
-    error: (message) => api.logger.error(message),
-    debug: (message) => api.logger.debug?.(message),
+    info: (message) => console.info(message),
+    warn: (message) => console.warn(message),
+    error: (message) => console.error(message),
+    debug: (message) => console.debug?.(message),
   };
 }

@@ -1,66 +1,28 @@
 # Releasing
 
-This repo uses Changesets to make npm releases reviewable.
+This is the pi-port fork. **No npm publishing is configured** while the pi port is in progress. Installation during development is local-only — see "Local install" below.
 
-## Normal development
+The Changesets tooling inherited from the upstream is left in place for future use but is not part of the active workflow. Track release-impacting changes by appending to the **Unreleased** section of [`CHANGELOG.md`](./CHANGELOG.md) in the same PR that makes the change.
 
-For any pull request that changes user-facing behavior, a changeset should be
-added before the work is considered ready to release:
+## Local install (development)
+
+While the pi adapter under `src/pi/` is being built up, the extension is not yet runnable as a pi extension. Once Phase 1 lands you will be able to:
 
 ```bash
-npm run changeset
+# from a clone of this repo
+npm install
+npm run build        # (build script to be added in Phase 6)
+
+# point pi at the built extension
+mkdir -p ~/.pi/agent/extensions/lossless-claw
+ln -s "$PWD/dist/pi/index.js" ~/.pi/agent/extensions/lossless-claw/index.js
+
+# or pass directly for a quick test
+pi -e ./dist/pi/index.js
 ```
 
-Choose the smallest appropriate bump:
+See [pi's extensions documentation](https://github.com/earendil-works/pi/blob/main/docs/extensions.md) for extension placement rules.
 
-- `patch`: fixes, docs-visible behavior changes, small compatibility work
-- `minor`: new features or notable new behavior
-- `major`: breaking changes
+## Future npm flow
 
-The generated markdown file in `.changeset/` should explain the release impact in a sentence or two.
-
-PRs that only touch internal tooling or CI can skip a changeset when they do not need an npm release note.
-
-## Who adds the changeset
-
-Maintainers own release metadata.
-
-- For internal PRs, the author can add the changeset directly.
-- For external PRs, do not expect the contributor to know or run the Changesets
-  workflow. The reviewer or merge maintainer should add the changeset before
-  merge, or immediately afterward in a small follow-up PR.
-- If a releasable PR lands without a changeset, create a catch-up changeset PR
-  before running the release flow.
-
-The practical rule is simple: if the change should appear in npm release notes,
-make sure a maintainer gets a `.changeset/*.md` file onto `main`.
-
-## Release flow
-
-1. Merge releasable PRs to `main`
-2. Let the `Version Packages` workflow open or update the release PR
-3. Review the generated version bump and `CHANGELOG.md`
-4. Merge the release PR to `main`
-5. Manually trigger the `Publish Package` workflow on the merged release commit
-6. Approve the workflow if a protected GitHub Environment is configured
-7. Let the workflow:
-   - install dependencies
-   - run tests
-   - publish to npm
-   - create tag `vX.Y.Z`
-   - create the GitHub release using the matching `CHANGELOG.md` section as the primary notes
-   - prepend those notes ahead of GitHub's generated contributor and compare summary
-
-## External setup required
-
-The repo-side files are not enough by themselves. A maintainer still needs to configure npm trusted publishing for this GitHub repository/workflow pair.
-
-Recommended external setup:
-
-1. Configure npm trusted publishing for this repo and the `publish.yml` workflow
-2. Optionally create a GitHub Environment named `npm-publish` and add required reviewers
-3. Confirm the repository label taxonomy used by `.github/release.yml`
-
-When configuring npm trusted publishing, register the GitHub workflow using the exact workflow filename in this repo: `.github/workflows/publish.yml`.
-
-The publish workflow is intentionally manual. Release issuance should stay deliberate even after trusted publishing is enabled.
+When the pi port reaches feature parity and the package is ready to publish under `@shaunbarlow/lossless-claw`, the upstream's Changesets-based workflow (described in [`CHANGELOG.openclaw-history.md`](./CHANGELOG.openclaw-history.md)'s lineage) can be reactivated. Until then, do not run `changeset publish` or related commands.

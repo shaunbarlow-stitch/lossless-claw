@@ -1,13 +1,24 @@
-export type {
-  AnyAgentTool,
-} from "openclaw/plugin-sdk";
+/**
+ * Local host-facing type definitions used by the LCM engine.
+ *
+ * Historically these were a compatibility bridge to OpenClaw's plugin-sdk.
+ * After the pi-port fork the engine no longer depends on OpenClaw at runtime,
+ * so these types are defined inline. Real pi-side bindings live under
+ * `src/pi/` (added in Phase 1).
+ */
 
 /**
- * Compatibility bridge for plugin-sdk context-engine symbols.
- *
- * This module intentionally keeps the context-engine contract local because
- * older OpenClaw SDK packages do not publish these newer type symbols yet.
+ * Minimal structural type for an agent tool. Kept loose to accommodate both
+ * the legacy OpenClaw plugin-sdk shape and the pi tool shape that will be
+ * introduced when the pi adapter is wired up.
  */
+export type AnyAgentTool = {
+  name: string;
+  description?: string;
+  parameters?: unknown;
+  execute: (...args: any[]) => any;
+  [key: string]: unknown;
+};
 
 export type ContextEngineProjection = {
   mode: "per_turn" | "thread_bootstrap";
@@ -60,28 +71,7 @@ export type ContextEngineInfo = {
   turnMaintenanceMode?: "background" | "inline" | string;
 };
 
-export type PluginCommandContext = {
-  [key: string]: any;
-};
-
-export type OpenClawPluginCommandDefinition = {
-  name?: string;
-  description?: string;
-  handler?: (ctx: PluginCommandContext) => unknown | Promise<unknown>;
-  [key: string]: any;
-};
-
 export type ContextEngineFactory = () => ContextEngine | Promise<ContextEngine>;
-
-export type OpenClawPluginApi = {
-  config?: any;
-  runtime?: any;
-  logger?: any;
-  log?: any;
-  registerCommand: (definition: OpenClawPluginCommandDefinition) => void;
-  registerContextEngine: (id: string, factory: ContextEngineFactory) => void;
-  [key: string]: any;
-};
 
 export type AgentMessage = {
   role: string;

@@ -1,33 +1,27 @@
 {
-  "name": "@martian-engineering/lossless-claw",
-  "version": "0.11.2",
-  "description": "Lossless Context Management plugin for OpenClaw — DAG-based conversation summarization with threshold compaction",
+  "name": "@shaunbarlow/lossless-claw",
+  "version": "1.0.0-pi.0",
+  "private": true,
+  "description": "Lossless Context Management extension for pi — DAG-based conversation summarization with threshold compaction (fork of @martian-engineering/lossless-claw)",
   "type": "module",
-  "main": "dist/index.js",
   "license": "MIT",
-  "author": "Josh Lehman <josh@martian.engineering>",
+  "author": "Shaun Barlow (fork of original work by Josh Lehman <josh@martian.engineering>)",
   "keywords": [
-    "openclaw",
-    "openclaw-plugin",
+    "pi",
+    "pi-extension",
     "context-management",
     "llm",
     "summarization",
     "conversation-memory",
-    "dag"
+    "dag",
+    "lossless"
   ],
   "scripts": {
-    "build": "esbuild index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:openclaw --external:\"@earendil-works/*\" --minify-whitespace",
-    "changeset": "changeset",
-    "release:verify": "npm run build && npm test && npm pack --dry-run",
-    "test": "vitest run --dir test",
-    "version-packages": "changeset version"
+    "test": "vitest run --dir test"
   },
   "files": [
-    "dist/",
-    "doctor-contract-api.d.ts",
-    "doctor-contract-api.js",
+    "src/",
     "skills/",
-    "openclaw.plugin.json",
     "docs/",
     "README.md",
     "LICENSE"
@@ -45,38 +39,12 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "peerDependencies": {
-    "openclaw": ">=2026.5.12"
-  },
-  "peerDependenciesMeta": {
-    "openclaw": {
-      "optional": true
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "openclaw": {
-    "extensions": [
-      "./dist/index.js"
-    ],
-    "compat": {
-      "pluginApi": ">=2026.5.12",
-      "minGatewayVersion": "2026.5.12",
-      "tested": [
-        "2026.5.12"
-      ]
-    },
-    "build": {
-      "openclawVersion": "2026.5.12"
-    }
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Martian-Engineering/lossless-claw.git"
+    "url": "git+https://github.com/shaunbarlow-stitch/lossless-claw.git"
   },
-  "homepage": "https://github.com/Martian-Engineering/lossless-claw#readme",
+  "homepage": "https://github.com/shaunbarlow-stitch/lossless-claw#readme",
   "bugs": {
-    "url": "https://github.com/Martian-Engineering/lossless-claw/issues"
+    "url": "https://github.com/shaunbarlow-stitch/lossless-claw/issues"
   }
 }

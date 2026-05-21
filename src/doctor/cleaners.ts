@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getFileBackedDatabasePath } from "../db/connection.js";
-import { buildLcmDatabaseBackupPath, writeLcmDatabaseBackup } from "./lcm-db-backup.js";
+import { buildLcmDatabaseBackupPath, writeLcmDatabaseBackup } from "../db-backup.js";
 
 export type DoctorCleanerId =
   | "archived_subagents"
