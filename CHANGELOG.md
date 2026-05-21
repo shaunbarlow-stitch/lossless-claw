@@ -52,19 +52,70 @@ Releases prior to the fork are recorded in [`CHANGELOG.openclaw-history.md`](./C
   observable, and shuts down cleanly. No ingest or assemble has been driven
   through pi yet because Phase 1 does not require an LLM call.
 
-### Known follow-ups for Phase 2
+### Added (Phase 2 — assemble + persistence)
 
-- `context` event is not yet wired; pi still falls back to its default
-  sliding-window compaction.
-- `session_before_compact` is not yet wired.
-- Ephemeral-session pruning at `session_shutdown` is a no-op pending a
-  public engine entrypoint to drop a single conversation row.
+- `context` event handler in `src/pi/index.ts`. Each LLM call now routes
+  through `engine.assemble()`, which substitutes pi's per-turn message list
+  with the engine's DAG-aware reconstruction (summaries from the LCM DB +
+  recent raw messages). Pi's own sliding-window compaction can still run in
+  parallel without correctness impact because every message is also
+  persisted via `message_end` ingest.
+- `before_agent_start` event handler. Picks up the assembler's optional
+  `systemPromptAddition` from the most recent `context` call and appends
+  it to pi's chained system prompt for the upcoming turn.
+- New `ensureSessionBound()` helper. The lossless-claw `sessionKey` is now
+  derived strictly from the file-header id of the pi session file, never
+  from pi's transient in-memory session id. Pi's print mode reports
+  different values for `ctx.sessionManager.getSessionId()` and the
+  eventually-written header id, which previously caused first-run +
+  resume to land on two different conversation rows (data was preserved
+  but recall didn't bridge across runs). Engine work now defers until the
+  session file appears.
+- Ephemeral-session detection updated: a session that never produced a
+  file is the new definition of "ephemeral" for the prune carve-out,
+  replacing the previous prefix-based detection.
+
+### Verified at runtime (Phase 2)
+
+Three-run smoke test against pi 0.75.4:
+
+1. First `pi -p` run: pi flushes the session file only at shutdown in
+   print mode, so live binding never happens. No engine work during the
+   run; the messages exist only in pi's session JSONL after exit.
+2. Resume run (`pi --session <file> -p "..."`): `ensureSessionBound()`
+   reads the file header, derives `sessionKey=pi:<headerId>`, and
+   `engine.bootstrap()` imports the 2 messages from the first run into
+   the LCM DB as `conversation_id=1`. The live turn's user + assistant
+   messages are then ingested through `message_end` and the `context`
+   event hands the engine's assembled view to the LLM.
+3. Second resume run with a recall question across turns: assemble
+   returns 5 messages of context; the LLM answers correctly using the
+   prior turns. After three runs the DB contains a single conversation
+   row and six contiguous messages.
+
+The "lossless" guarantee holds across pi's print-mode shutdown gap
+(messages persist in the session file and are picked up on resume).
+
+### Known follow-ups for Phase 3+
+
+- `session_before_compact` is still not wired. Pi can run its own
+  sliding-window compaction in parallel without losing data (every
+  message is ingested before pi compacts), so this is intentionally
+  deferred until the LCM tools (Phase 3) land and we can evaluate
+  whether intercepting compaction adds value or just complexity.
+- Pi print mode does not flush the session file until shutdown, so the
+  first turn of a print-mode invocation is captured by LCM only on the
+  subsequent resume via `engine.bootstrap()`. Interactive mode flushes
+  continuously and should ingest live; that path has not yet been
+  exercised end-to-end.
+- Ephemeral-session pruning at `session_shutdown` is still log-only
+  pending a public engine entrypoint to drop a single conversation row.
 - Engine logs `fts5=undefined` at migration time because the
   `fts5Available` field is computed after the migration log line;
-  pre-existing upstream cosmetic bug, scheduled to be revisited in Phase 2.
+  pre-existing upstream cosmetic bug, scheduled to be revisited later.
 - ~698 lines of strict-TS errors remain inherited from upstream
   (`tsc --strict` was never the build path). Tests pass under vitest as
-  before. Strict-TS cleanup is not a Phase 1 goal.
+  before. Strict-TS cleanup is not a goal of the early phases.
 
 ### Internal (Phase 0)
 

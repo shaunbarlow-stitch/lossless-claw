@@ -35,8 +35,6 @@ import {
   type SharedLcmEntry,
 } from "./shared-init.js";
 import {
-  isEphemeralSessionKey,
-  newEphemeralSessionKey,
   readSessionIdFromFile,
   sessionKeyForId,
 } from "./session-keys.js";
@@ -70,26 +68,73 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
   // extension runtime is bound to one session at a time, so a singleton is
   // enough.
   type ActiveSession = {
-    sessionKey: string;
+    /** Recorded at session_start; the session file pi intends to write. */
     sessionFile: string | undefined;
-    sessionIdForEngine: string;
-    isEphemeral: boolean;
+    /**
+     * Fallback session id observed in memory at session_start. Pi's in-memory
+     * id is NOT the same as the eventual file-header id in print mode, so we
+     * never use this for persistent sessions; it is retained for diagnostics
+     * and for ephemeral-session detection at shutdown.
+     */
+    fallbackSessionId: string;
+    /**
+     * The lossless-claw session key and engine-side session id. Both are
+     * derived from the pi session-header `id` field once the session file
+     * exists on disk. They stay undefined for the early-startup window
+     * between `session_start` and pi's first write of the session header,
+     * during which event handlers no-op rather than commit data under a
+     * transient identity.
+     */
+    sessionKey: string | undefined;
+    sessionIdForEngine: string | undefined;
     bootstrapped: boolean;
     shared: SharedLcmEntry;
+    /**
+     * Stash for the engine's optional systemPromptAddition output. The
+     * assembler returns this on each `context` call; we apply it on the
+     * next `before_agent_start` because pi composes the system prompt at
+     * that lifecycle point.
+     */
+    pendingSystemPromptAddition: string | undefined;
   };
   let active: ActiveSession | undefined;
 
   /**
-   * Bootstrap is deferred until the pi session file actually exists on disk.
-   * Pi fires `session_start` before flushing the session header on first run,
-   * so an eager `engine.bootstrap()` racing the file write would ENOENT.
-   * The first `message_end` (or `context`, once Phase 2 wires it) checks this
-   * and triggers the bootstrap once the file is observable.
+   * Resolve `active.sessionKey` and `active.sessionIdForEngine` from the
+   * session-file header. Pi (at least in print mode) reports a different
+   * in-memory session id than the eventually-written file-header id, so the
+   * file is the canonical source.
+   *
+   * Returns true once the session has been bound; false while the session
+   * file is still missing. Handlers should bail when this returns false to
+   * avoid creating a conversation row under a transient identity.
+   */
+  function ensureSessionBound(): boolean {
+    if (!active) return false;
+    if (active.sessionKey && active.sessionIdForEngine) return true;
+    if (!active.sessionFile || !existsSync(active.sessionFile)) return false;
+    const headerId = readSessionIdFromFile(active.sessionFile);
+    if (!headerId) return false;
+    active.sessionKey = sessionKeyForId(headerId);
+    active.sessionIdForEngine = headerId;
+    piLog.info(
+      `session bound sessionKey=${active.sessionKey} sessionFile=${active.sessionFile}`,
+    );
+    return true;
+  }
+
+  /**
+   * Bootstrap is deferred until the pi session file actually exists on disk
+   * AND the session has been bound from its header. Pi fires `session_start`
+   * before flushing the session header, so an eager `engine.bootstrap()`
+   * racing the file write would ENOENT. Any of `context`, `message_end`, or
+   * a follow-up tick triggers this once the file is observable.
    */
   async function ensureBootstrapped(): Promise<void> {
     if (!active || active.bootstrapped) return;
+    if (!ensureSessionBound()) return;
     const { sessionFile, sessionKey, sessionIdForEngine, shared } = active;
-    if (!sessionFile || !existsSync(sessionFile)) return;
+    if (!sessionFile || !sessionKey || !sessionIdForEngine) return;
     try {
       const result = await shared.engine.bootstrap({
         sessionId: sessionIdForEngine,
@@ -101,7 +146,7 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
         `bootstrap ok sessionKey=${sessionKey} sessionFile=${sessionFile} bootstrapped=${result.bootstrapped} imported=${result.importedMessages}`,
       );
     } catch (err) {
-      piLog.warn(`deferred bootstrap failed (will retry on next message): ${describeLogError(err)}`);
+      piLog.warn(`deferred bootstrap failed (will retry on next event): ${describeLogError(err)}`);
     }
   }
 
@@ -179,27 +224,21 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
         },
       });
 
-      const headerId = sessionFile ? readSessionIdFromFile(sessionFile) : undefined;
-      const sessionKey = headerId ? sessionKeyForId(headerId) : newEphemeralSessionKey();
-      const isEphemeral = isEphemeralSessionKey(sessionKey);
-      const sessionIdForEngine = headerId ?? ctx.sessionManager.getSessionId();
-
       active = {
-        sessionKey,
         sessionFile,
-        sessionIdForEngine,
-        isEphemeral,
+        fallbackSessionId: ctx.sessionManager.getSessionId(),
+        sessionKey: undefined,
+        sessionIdForEngine: undefined,
         bootstrapped: false,
         shared,
+        pendingSystemPromptAddition: undefined,
       };
 
-      // Bootstrap is deferred to the first ingest so that pi has a chance to
-      // flush the session header to disk first. See ensureBootstrapped().
       piLog.info(
-        `session_start (reason=${event.reason}) sessionKey=${sessionKey} sessionFile=${sessionFile ?? "<ephemeral>"} bootstrap=deferred`,
+        `session_start (reason=${event.reason}) sessionFile=${sessionFile ?? "<ephemeral>"} bind=deferred`,
       );
-      // Attempt an immediate bootstrap in case pi already wrote the header
-      // (this is common on /resume).
+      // Eager bind+bootstrap attempt in case the header was already flushed
+      // (common on /resume).
       await ensureBootstrapped();
     } catch (err) {
       piLog.error(`session_start failed: ${describeLogError(err)}`);
@@ -213,11 +252,12 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
     if (!active) return;
     try {
       await ensureBootstrapped();
-      const ingestSessionId = active.sessionFile
-        ? (readSessionIdFromFile(active.sessionFile) ?? active.sessionIdForEngine)
-        : active.sessionIdForEngine;
+      if (!active.sessionKey || !active.sessionIdForEngine) {
+        piLog.debug("message_end skipped: session not yet bound (file pending)");
+        return;
+      }
       await active.shared.engine.ingest({
-        sessionId: ingestSessionId,
+        sessionId: active.sessionIdForEngine,
         sessionKey: active.sessionKey,
         message: event.message as unknown as AgentMessage,
       });
@@ -226,25 +266,75 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
     }
   });
 
+  /**
+   * Replace pi's per-turn message list with the engine's DAG-aware assembled
+   * view. The engine reads its DB to splice in summary nodes and trims raw
+   * messages that are already represented by those summaries.
+   *
+   * Pi may still trigger its own sliding-window compaction in parallel based
+   * on its own token math; that does not affect correctness because every
+   * raw message was already persisted by `message_end` ingest, and the
+   * assembler reads from the DB rather than from pi's session tree.
+   */
+  pi.on("context", async (event) => {
+    if (!active) return;
+    try {
+      await ensureBootstrapped();
+      if (!active.sessionKey || !active.sessionIdForEngine) {
+        piLog.debug("context skipped: session not yet bound (file pending)");
+        return undefined;
+      }
+      const inputMessages = event.messages as unknown as AgentMessage[];
+      const result = await active.shared.engine.assemble({
+        sessionId: active.sessionIdForEngine,
+        sessionKey: active.sessionKey,
+        messages: inputMessages,
+      });
+      active.pendingSystemPromptAddition = result.systemPromptAddition;
+      piLog.debug(
+        `assemble: in=${inputMessages.length} out=${result.messages.length} tokens=${result.estimatedTokens} systemAddition=${result.systemPromptAddition ? "yes" : "no"}`,
+      );
+      return { messages: result.messages as unknown as typeof event.messages };
+    } catch (err) {
+      piLog.warn(`assemble failed (passing through pi's view unchanged): ${describeLogError(err)}`);
+      return undefined;
+    }
+  });
+
+  /**
+   * If the most recent assemble produced a systemPromptAddition, append it
+   * to pi's chained system prompt for the upcoming agent turn. The engine
+   * uses this channel to inject conversation-level guidance (e.g. "these
+   * tools are available to expand summarised history") that should live in
+   * the system prompt, not the message list.
+   */
+  pi.on("before_agent_start", async (event) => {
+    if (!active) return;
+    const addition = active.pendingSystemPromptAddition;
+    if (!addition) return;
+    active.pendingSystemPromptAddition = undefined;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${addition}`,
+    };
+  });
+
   pi.on("session_shutdown", async (event) => {
     if (!active) return;
     const finalActive = active;
     active = undefined;
     try {
-      if (finalActive.isEphemeral && overlay.pruneEphemeralOnShutdown) {
-        // Engine's onSessionEnd-style hooks expect lifecycle params. The
-        // pi build does not yet expose a public "prune by sessionKey" API
-        // on LcmContextEngine; this is intentionally deferred to Phase 2
-        // alongside the compaction wiring (the engine's session_end hook
-        // already covers cleanup for sessions whose conversation row we
-        // bound here, and the next phase will route pi's shutdown reason
-        // through that path explicitly).
+      // A session that never got bound never produced a conversation row,
+      // so the prune carve-out only applies when the user opted in. The
+      // engine's session_end hook (Phase 4) will handle the actual prune
+      // call; this is currently log-only.
+      const wasEphemeral = !finalActive.sessionKey;
+      if (wasEphemeral && overlay.pruneEphemeralOnShutdown) {
         piLog.debug(
-          `session_shutdown ephemeral session pending prune: sessionKey=${finalActive.sessionKey} reason=${event.reason}`,
+          `session_shutdown ephemeral: sessionFile=${finalActive.sessionFile ?? "<none>"} reason=${event.reason}`,
         );
       } else {
         piLog.debug(
-          `session_shutdown sessionKey=${finalActive.sessionKey} reason=${event.reason}`,
+          `session_shutdown sessionKey=${finalActive.sessionKey ?? "<unbound>"} reason=${event.reason}`,
         );
       }
     } finally {
@@ -266,9 +356,9 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
       }
       const summary = [
         `db: ${active.shared.dbPath}`,
-        `sessionKey: ${active.sessionKey}`,
+        `sessionKey: ${active.sessionKey ?? "<pending>"}`,
         `sessionFile: ${active.sessionFile ?? "<ephemeral>"}`,
-        `ephemeral: ${active.isEphemeral}`,
+        `bootstrapped: ${active.bootstrapped}`,
       ].join("  ");
       ctx.ui.notify(`lossless-claw — ${summary}`, "info");
     },
