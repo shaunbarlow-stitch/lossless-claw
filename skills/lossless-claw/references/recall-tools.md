@@ -1,61 +1,14 @@
-# Recall Tools
+# Recall tools
 
-Use recall tools when the question depends on exact historical evidence from compacted context.
+The pi port registers two recall tools:
 
-## Tool selection
+- `lcm_grep`: search the active conversation's stored history for terms, paths, identifiers, or phrases.
+- `lcm_describe`: inspect a known summary (`sum_*`) or large-file (`file_*`) record.
 
-### `lcm_grep`
+Recommended workflow:
 
-Use for:
+1. Use `lcm_grep` to find evidence.
+2. Use `lcm_describe` only with an ID returned for a summary or file.
+3. Quote retrieved evidence rather than reconstructing exact details from summaries.
 
-- finding whether a term, file name, error string, or identifier appears in compacted history
-- narrowing the search space before deeper inspection
-
-Do not use it for:
-
-- answering detail-heavy questions by itself
-
-### `lcm_describe`
-
-Use for:
-
-- inspecting a specific summary or stored-file record by ID
-- reading lineage and content for a known summary node
-
-Do not use it for:
-
-- broad discovery when you do not know the target ID yet
-
-### `lcm_expand_query`
-
-Use for:
-
-- focused questions that need richer detail recovered from summaries
-- evidence-oriented follow-up after `lcm_grep` or `lcm_describe`
-
-This is the best recall tool when the user asks for:
-
-- exact commands
-- exact file paths
-- precise timestamps
-- root-cause chains
-
-### `lcm_expand`
-
-Treat as a specialized sub-agent flow, not the default first step.
-
-## Recommended workflow
-
-1. Start with `lcm_grep` to find likely evidence.
-2. Use `lcm_describe` when you have a summary or file ID.
-3. Use `lcm_expand_query` when the answer requires precise recovery rather than a high-level summary.
-
-## Conversation scope
-
-When `conversationId` is omitted, recall tools use the current session family: the active conversation plus archived segments that share the same stable session identity. This preserves recall across session rotation and `/reset` replacement rows.
-
-Use `conversationId` only when you need one specific physical conversation. Use `allConversations: true` for broad discovery across unrelated sessions.
-
-## Important guardrail
-
-Do not infer exact details from summaries alone when the user needs evidence. Expand first or state that the answer still needs expansion.
+`lcm_expand` and `lcm_expand_query` are not registered in the pi port. They depended on the removed OpenClaw gateway subagent protocol.

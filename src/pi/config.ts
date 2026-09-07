@@ -12,6 +12,7 @@
  *   2. Pi extension config (passed in via the factory)
  *   3. Defaults declared here
  */
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -27,6 +28,31 @@ export function defaultLcmDataDir(): string {
 
 export function defaultLcmDatabasePath(): string {
   return join(defaultLcmDataDir(), "lcm.db");
+}
+
+/** User-editable extension config, separate from pi's host settings. */
+export function defaultPiLcmConfigPath(): string {
+  return join(defaultLcmDataDir(), "config.json");
+}
+
+/**
+ * Load the pi extension's JSON configuration. Pi extension factories receive
+ * no settings payload, so configuration lives beside the user-scoped LCM DB.
+ * `LCM_CONFIG_PATH` selects a different file for automation or testing.
+ */
+export function loadPiLcmConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
+  const path = env.LCM_CONFIG_PATH?.trim() || defaultPiLcmConfigPath();
+  if (!existsSync(path)) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`Unable to read Lossless Claw config at ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Lossless Claw config at ${path} must contain a JSON object.`);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 export function defaultLcmLargeFilesDir(): string {
@@ -86,8 +112,7 @@ export function resolvePiLcmConfig(
   // here under pluginConfig precedence rather than via env mutation.
   if (
     cleaned.databasePath === undefined
-    && env.LCM_DB_PATH === undefined
-    && env.OPENCLAW_LCM_DB === undefined
+    && env.LCM_DATABASE_PATH === undefined
   ) {
     cleaned.databasePath = defaultLcmDatabasePath();
   }

@@ -1,34 +1,24 @@
 ---
 name: lossless-claw
-description: Configure, diagnose, and use lossless-claw effectively in OpenClaw, with emphasis on key settings, summary health, and recall-tool usage.
+description: Configure, diagnose, and use the lossless-claw pi extension, including durable recall and summary health.
 ---
 
-# Lossless Claw
+# Lossless Claw for pi
 
-Use this skill when the task is about operating, tuning, or debugging the `lossless-claw` OpenClaw plugin.
+Use this skill for operating, tuning, or debugging the `lossless-claw` pi extension.
 
-Start here:
-
-1. Confirm whether the user needs configuration help, diagnostics, recall-tool guidance, or session-lifecycle guidance.
-2. If they need a quick health check, tell them to run `/lossless` (`/lcm` is the shorter alias).
-3. If they suspect summary corruption or truncation, use `/lossless doctor`.
-4. If they want high-confidence junk/session cleanup guidance, use `/lossless doctor clean` before recommending any deletes.
-5. If they ask how `/new`, `/reset`, or `/lossless rotate` interacts with LCM, read the session-lifecycle reference before answering.
-6. Load the relevant reference file instead of improvising details from memory.
+1. For a health check, use `/lcm` or `/lcm status`.
+2. For summary-marker problems, use `/lcm doctor`; `/lcm doctor apply` is the explicit repair action.
+3. For cleanup, run `/lcm doctor clean` first. Only recommend `/lcm doctor clean apply` when the user explicitly wants deletion; it asks for confirmation and backs up first.
+4. For exact compacted-history evidence, use `lcm_grep`, then `lcm_describe` with a `sum_*` or `file_*` ID.
+5. Read the relevant reference before giving configuration or lifecycle advice.
 
 Reference map:
 
-- Configuration (complete config surface on current main): `references/config.md`
-- Internal model and data flow: `references/architecture.md`
-- Diagnostics and summary-health workflow: `references/diagnostics.md`
-- Recall tools and when to use them: `references/recall-tools.md`
-- `/new`, `/reset`, and `/lossless rotate` behavior with current lossless-claw session mapping: `references/session-lifecycle.md`
+- Complete configuration: `references/config.md`
+- Data model and assembly: `references/architecture.md`
+- Commands and summary health: `references/diagnostics.md`
+- Recall tools: `references/recall-tools.md`
+- pi session identity and rotation: `references/session-lifecycle.md`
 
-Working rules:
-
-- Prioritize explaining why a setting matters, not just what it does.
-- Prefer the native plugin command surface for MVP workflows (`/lossless`, with `/lcm` as alias).
-- Do not assume the Go TUI is installed.
-- Do not recommend advanced rewrite/backfill/transplant/dissolve flows unless the user explicitly asks for non-MVP internals.
-- For exact evidence retrieval from compacted history, guide the user toward recall tools instead of guessing from summaries.
-- When users compare `/lossless` to `/status`, explain that they report different layers: `/lossless` shows LCM-side frontier/summary metrics, while `/status` shows the last assembled runtime prompt snapshot.
+Do not claim that `lcm_expand` or `lcm_expand_query` is available: the pi port currently registers only `lcm_grep` and `lcm_describe`.

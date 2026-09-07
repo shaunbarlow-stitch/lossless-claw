@@ -1,5 +1,7 @@
 # TUI Reference
 
+> **Port note:** `lcm-tui` remains an upstream OpenClaw-era utility and is not part of the supported pi installation flow. pi users should use `/lcm` and the pi session UI.
+
 The Lossless Claw TUI (`lcm-tui`) is an interactive terminal application for inspecting, debugging, and maintaining the LCM database. It provides direct visibility into what the model sees (context assembly), how summaries are structured (DAG hierarchy), and tools for surgical repairs when things go wrong.
 
 ## Installation

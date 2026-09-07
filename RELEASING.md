@@ -1,28 +1,36 @@
 # Releasing
 
-This is the pi-port fork. **No npm publishing is configured** while the pi port is in progress. Installation during development is local-only — see "Local install" below.
+This is the pi-port fork. npm publishing remains disabled until feature parity and packaging policy are explicitly approved. Record user-visible changes in the **Unreleased** section of [CHANGELOG.md](./CHANGELOG.md).
 
-The Changesets tooling inherited from the upstream is left in place for future use but is not part of the active workflow. Track release-impacting changes by appending to the **Unreleased** section of [`CHANGELOG.md`](./CHANGELOG.md) in the same PR that makes the change.
+## Local install and verification
 
-## Local install (development)
-
-While the pi adapter under `src/pi/` is being built up, the extension is not yet runnable as a pi extension. Once Phase 1 lands you will be able to:
+Pi loads the TypeScript extension directly through its bundled jiti loader; this package deliberately has no `dist/` build step.
 
 ```bash
-# from a clone of this repo
+# from a clean checkout
 npm install
-npm run build        # (build script to be added in Phase 6)
+npm test
+pi install .
 
-# point pi at the built extension
-mkdir -p ~/.pi/agent/extensions/lossless-claw
-ln -s "$PWD/dist/pi/index.js" ~/.pi/agent/extensions/lossless-claw/index.js
-
-# or pass directly for a quick test
-pi -e ./dist/pi/index.js
+# confirm the installed package loads without an LLM call
+{ echo '{"jsonrpc":"2.0","id":1,"method":"shutdown","params":{}}'; sleep 1; } \
+  | pi --mode rpc
 ```
 
-See [pi's extensions documentation](https://github.com/earendil-works/pi/blob/main/docs/extensions.md) for extension placement rules.
+`pi install .` adds the local package path to `~/.pi/agent/settings.json` without copying it. Use `pi install -l .` for project-local installation. Remove it with `pi remove /absolute/path/to/lossless-claw`.
+
+For one-off development without changing pi settings:
+
+```bash
+pi -e ./src/pi/index.ts
+```
+
+For eventual git installation, users will install a pinned ref:
+
+```bash
+pi install git:github.com/shaunbarlow-stitch/lossless-claw@<tag-or-commit>
+```
 
 ## Future npm flow
 
-When the pi port reaches feature parity and the package is ready to publish under `@shaunbarlow/lossless-claw`, the upstream's Changesets-based workflow (described in [`CHANGELOG.openclaw-history.md`](./CHANGELOG.openclaw-history.md)'s lineage) can be reactivated. Until then, do not run `changeset publish` or related commands.
+When the port is feature-complete and publication is approved, remove `private`, add the final package metadata, validate `npm pack`, and re-enable the upstream Changesets workflow. Do not run `changeset publish` before that approval.

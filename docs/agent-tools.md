@@ -1,5 +1,7 @@
 # Agent tools
 
+> **Port note:** The pi extension currently registers only `lcm_grep` and `lcm_describe`. OpenClaw gateway/subagent tools described below (`lcm_expand*`) are not available yet.
+
 LCM provides four tools for agents to search, inspect, and recall information from compacted conversation history.
 
 ## Usage patterns

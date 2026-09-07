@@ -1,5 +1,7 @@
 # Optional: enable FTS5 for fast full-text search
 
+> **Port note:** FTS5 behavior applies to the pi extension too, but OpenClaw gateway setup instructions below are historical. Use the Node runtime that launches pi.
+
 `lossless-claw` works without FTS5 as of the current release. When FTS5 is unavailable in the
 Node runtime that runs the OpenClaw gateway, the plugin:
 

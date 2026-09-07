@@ -5,6 +5,22 @@ Releases prior to the fork are recorded in [`CHANGELOG.openclaw-history.md`](./C
 
 ## Unreleased — 1.0.0-pi.0 (in development)
 
+### Added (Phase 4 — command surface)
+
+- `/lcm` pi command family: status, timestamped database backup, safe active-session transcript rotation, scoped doctor scan/repair, and global legacy-cleaner scan.
+- `/lcm doctor clean apply` requires interactive confirmation before deleting any cleaner candidates and creates a database backup before the mutation.
+- Replaced the temporary `/lcm-status` command with `/lcm` argument completion.
+
+### Added (Phase 6 — local install and configuration)
+
+- Local pi-package installation is documented and verified with `pi install .`; no build step is required because pi loads the TypeScript extension through jiti.
+- User-editable pi config file at `~/.pi/agent/extensions/lossless-claw/config.json`, with `LCM_CONFIG_PATH` for an alternate path.
+
+### Fixed
+
+- Normalize host-agnostic assembled history back into pi's strict message schema before each model call, preventing intermittent `Cannot read properties of undefined (reading 'length')` failures after tool results.
+- Pi config now honors `LCM_DATABASE_PATH` over extension `databasePath`, matching the documented environment-variable precedence.
+
 ### Breaking
 
 - Forked from `@martian-engineering/lossless-claw@0.11.2`. Target host changed

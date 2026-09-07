@@ -4,7 +4,7 @@ Status tracker for the fork retargeting `@martian-engineering/lossless-claw`
 (OpenClaw plugin) to a **pi extension**, hosted at
 `git@github.com:shaunbarlow-stitch/lossless-claw.git` on the `pi-port` branch.
 
-Last updated: after Phase 3.
+Last updated: after Phase 4.
 
 ---
 
@@ -66,7 +66,7 @@ src/
 | `session_shutdown` | refcount release; prune (log-only) | ✅ Phase 1 (prune deferred) |
 | `session_before_compact` | `engine.compact()` | ❌ deferred |
 | tool calls | `pi.registerTool` for lcm_grep/lcm_describe | ✅ Phase 3 |
-| `/lcm*` commands | `pi.registerCommand` | ❌ Phase 4 |
+| `/lcm*` commands | `pi.registerCommand` | ✅ Phase 4 |
 
 ---
 
@@ -139,21 +139,20 @@ Extension loads, DB opens, lifecycle wired (no assemble/compact yet).
 
 ## Outstanding work
 
-### Phase 4 — Command surface (next, largest remaining phase)
+### Phase 4 — Command surface ✅
 
-Port the `/lcm` command family to `pi.registerCommand`. The upstream
-`src/plugin/lcm-command.ts` (2.3k LOC) was deleted in Phase 0, so the
-subcommand dispatch must be re-implemented, but the underlying helpers
-survive (`src/doctor/*.ts`, `src/db-backup.ts`, engine methods).
+Reimplemented the pi-facing `/lcm` dispatcher in `src/pi/commands.ts`.
 
-- [ ] `/lcm` (or `/lcm status`): version, DB path + size, active conversation
-      row, summary counts, doctor health, deferred compaction debt.
-- [ ] `/lcm backup`: timestamped DB backup (reuse `db-backup.ts`).
-- [ ] `/lcm rotate`: rewrite the active session transcript tail (reuse
-      `engine.rewriteTranscriptForRotate`).
-- [ ] `/lcm doctor` and `/lcm doctor clean`: scan/clean (reuse `src/doctor/*`).
-- [ ] Replace the placeholder `/lcm-status` command from Phase 1.
-- [ ] Argument autocompletion for subcommands (optional).
+- `/lcm` / `/lcm status`: DB path + size, global counts, active conversation,
+  doctor health, and deferred-compaction debt.
+- `/lcm backup`: timestamped DB backup.
+- `/lcm rotate`: waits for idle, creates a backup, then rewrites the active
+  persisted transcript tail via `engine.rotateSessionStorageWithBackup()`.
+- `/lcm doctor`: scoped broken-summary scan; `/lcm doctor apply` repairs it.
+- `/lcm doctor clean`: global legacy-junk scan; `/lcm doctor clean apply
+  [filter] [vacuum]` requires an interactive confirmation before deletion and
+  the cleaner creates a database backup first.
+- Replaced the Phase-1 `/lcm-status` placeholder and added completions.
 
 ### Phase 3.5 / later — in-process expansion (optional)
 
@@ -163,30 +162,36 @@ survive (`src/doctor/*.ts`, `src/db-backup.ts`, engine methods).
 - [ ] Remove the now-unused `src/tools/lcm-expand-tool.delegation.ts` and the
       `callGateway` stub if expansion no longer needs them.
 
-### Phase 5 — Tests for the adapter surface
+### Phase 5 — Tests for the adapter surface ✅
 
-Engine-shaped tests already pass (775). The adapter needs its own coverage.
+Adapter coverage lives in `test/pi-*.test.ts`.
 
-- [ ] `src/pi/config.ts`: defaults, env precedence, overlay parsing.
-- [ ] `src/pi/session-keys.ts`: persisted vs ephemeral, header-id derivation.
-- [ ] `src/pi/llm-adapter.ts`: message coercion, model resolution, auth/error
-      paths (mock ModelRegistry + pi-ai).
-- [ ] `src/pi/shared-init.ts`: refcount acquire/release, shutdown-on-last.
-- [ ] Event-ordering: ingest → assemble → shutdown lifecycle.
-- [ ] Session isolation: two sessions in one project stay on separate
-      conversation rows.
-- [ ] Reload DB lifecycle; ephemeral cleanup once implemented.
+- Config defaults, environment precedence, and pi overlay parsing.
+- Persisted/ephemeral session keys and header-id derivation.
+- LLM message coercion, model resolution, auth, and completion errors with a
+  mocked ModelRegistry + pi-ai completion function.
+- Shared DB refcount acquire/release and shutdown-on-last behavior.
+- Lifecycle coverage for bind → bootstrap → ingest → assemble → shutdown,
+  including two persisted sessions sharing one DB without cross-session recall.
+- Command registration and `/lcm status` output.
 
-### Phase 6 — Packaging, docs, install
+Ephemeral cleanup coverage remains deferred with the implementation because
+pruning is intentionally still log-only.
 
-- [ ] Build/bundling decision (jiti loads `.ts` directly today; decide if a
-      `dist/` build is needed for distribution).
-- [ ] Local-install instructions verified end-to-end (symlink into
-      `~/.pi/agent/extensions/lossless-claw/` or `pi install git:...`).
-- [ ] Rewrite `docs/` (still OpenClaw-shaped in places) for pi.
-- [ ] `docs/configuration.md` + `skills/lossless-claw/references/config.md`
-      synced with `src/pi/config.ts` and `src/db/config.ts` per AGENTS.md.
-- [ ] Confirm the bundled skill loads via `resources_discover`.
+### Phase 6 — Packaging, docs, install ✅
+
+- **No build:** pi's bundled jiti loader runs the TypeScript extension source
+  directly; package manifest points to `./src/pi/index.ts`.
+- Verified a clean temporary-home `pi install .` followed by `pi -p '/lcm'`:
+  the installed local package loaded, opened its user-scoped DB, and registered
+  the extension. `README.md` and `RELEASING.md` document local, project-local,
+  one-off, and future pinned-git installation.
+- Added user-editable pi JSON config at
+  `~/.pi/agent/extensions/lossless-claw/config.json` (or `LCM_CONFIG_PATH`),
+  because pi extension factories do not receive a host settings object.
+- Rewrote the configuration reference and bundled skill for pi paths, commands,
+  session identity, and currently available tools. `resources_discover` ships
+  the `skills/` directory with the package.
 
 ### Cross-cutting / deferred items
 

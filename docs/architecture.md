@@ -1,5 +1,7 @@
 # Architecture
 
+> **Port note:** This document describes the pre-fork OpenClaw architecture and is retained for engine provenance. For the supported pi adapter, see [`pi-port-plan.md`](./pi-port-plan.md) and [`../skills/lossless-claw/references/architecture.md`](../skills/lossless-claw/references/architecture.md).
+
 This document describes how lossless-claw works internally — the data model, compaction lifecycle, context assembly, and expansion system.
 
 ## Data model

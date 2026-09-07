@@ -14,12 +14,15 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import type { LcmContextEngine } from "../engine.js";
+import type { LcmDependencies } from "../types.js";
 import { normalizePath } from "../db/connection.js";
 
 export type SharedLcmEntry = {
   dbPath: string;
   database: DatabaseSync;
   engine: LcmContextEngine;
+  /** Dependencies used to construct the shared engine (needed by command helpers). */
+  deps: LcmDependencies;
   /** Cleanup called when the last reference is released. */
   shutdown: () => Promise<void> | void;
 };

@@ -1,23 +1,11 @@
 /**
  * Pi extension entrypoint for lossless-claw.
  *
- * Phase 1 scope (intentionally minimal):
- *  - Load config, open the shared DB, instantiate the LcmContextEngine.
- *  - On `session_start`, bind the current pi session to a conversation row
- *    via `engine.bootstrap()`. The session key is derived from the pi
- *    session header id so renames or moves of the session file do not break
- *    recall.
- *  - On `message_end`, ingest each finalized message into the engine.
- *  - On `session_shutdown`, release the shared DB reference. If the session
- *    was ephemeral and the user has not opted out, the per-session
- *    conversation row is pruned.
- *  - `context`, `session_before_compact`, tool registration, and `/lcm`
- *    commands are deliberately *not* wired yet. Phase 2 adds assemble +
- *    compact, Phase 3 adds tools, Phase 4 adds commands.
- *
- * The success criterion for Phase 1 is: pi loads this extension without
- * errors, ingests messages, and shuts down cleanly. Recall/assembly are
- * not yet exercised.
+ * The adapter loads the shared engine, binds persisted pi sessions by their
+ * header id, ingests messages, assembles LCM context, registers retrieval
+ * tools, and exposes the `/lcm` command family. Session shutdown releases
+ * the shared DB reference; ephemeral pruning remains deferred because the
+ * engine does not yet expose a safe single-conversation prune entrypoint.
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -28,13 +16,15 @@ import { NOOP_LCM_LOGGER, describeLogError } from "../lcm-log.js";
 import type { LcmDependencies } from "../types.js";
 import type { AgentMessage } from "../host-types.js";
 import { buildLcmDependencies } from "./deps.js";
-import { defaultLcmDataDir, resolvePiLcmConfig } from "./config.js";
+import { defaultLcmDataDir, loadPiLcmConfig, resolvePiLcmConfig } from "./config.js";
 import {
   acquireSharedLcm,
   releaseSharedLcm,
   type SharedLcmEntry,
 } from "./shared-init.js";
 import { registerLcmTools } from "./tools.js";
+import { registerLcmCommands } from "./commands.js";
+import { normalizeAssembledMessagesForPi } from "./messages.js";
 import {
   readSessionIdFromFile,
   sessionKeyForId,
@@ -56,7 +46,13 @@ function formatLogLine(message: string): string {
  * up-front network or filesystem work is required.
  */
 export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigInput): void {
-  const pluginConfig = (input?.config ?? {}) as Record<string, unknown>;
+  // Pi's ExtensionFactory API does not pass a settings object. Keep the
+  // optional input for embedders/tests, but load the normal user config from
+  // the documented JSON file beside LCM's user-scoped data directory.
+  const pluginConfig = {
+    ...loadPiLcmConfig(process.env),
+    ...((input?.config ?? {}) as Record<string, unknown>),
+  };
 
   // Resolve config eagerly so any misconfiguration surfaces at load time
   // rather than mid-session. Engine construction is deferred to the first
@@ -97,6 +93,8 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
      * that lifecycle point.
      */
     pendingSystemPromptAddition: string | undefined;
+    /** Resolve the currently selected model when context is assembled. */
+    getModelIdentity: () => { api?: string; provider?: string; id?: string } | undefined;
   };
   let active: ActiveSession | undefined;
 
@@ -229,6 +227,7 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
             dbPath,
             database,
             engine,
+            deps,
             shutdown: () => {
               try {
                 closeLcmConnection(database);
@@ -251,6 +250,11 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
         bootstrapped: false,
         shared,
         pendingSystemPromptAddition: undefined,
+        getModelIdentity: () => {
+          const model = ctx.model;
+          if (!model) return undefined;
+          return { api: model.api, provider: model.provider, id: model.id };
+        },
       };
 
       piLog.info(
@@ -310,10 +314,14 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
         messages: inputMessages,
       });
       active.pendingSystemPromptAddition = result.systemPromptAddition;
-      piLog.debug(
-        `assemble: in=${inputMessages.length} out=${result.messages.length} tokens=${result.estimatedTokens} systemAddition=${result.systemPromptAddition ? "yes" : "no"}`,
+      const piMessages = normalizeAssembledMessagesForPi(
+        result.messages,
+        active.getModelIdentity(),
       );
-      return { messages: result.messages as unknown as typeof event.messages };
+      piLog.debug(
+        `assemble: in=${inputMessages.length} out=${piMessages.length} tokens=${result.estimatedTokens} systemAddition=${result.systemPromptAddition ? "yes" : "no"}`,
+      );
+      return { messages: piMessages as unknown as typeof event.messages };
     } catch (err) {
       piLog.warn(`assemble failed (passing through pi's view unchanged): ${describeLogError(err)}`);
       return undefined;
@@ -342,10 +350,8 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
     const finalActive = active;
     active = undefined;
     try {
-      // A session that never got bound never produced a conversation row,
-      // so the prune carve-out only applies when the user opted in. The
-      // engine's session_end hook (Phase 4) will handle the actual prune
-      // call; this is currently log-only.
+      // Ephemeral pruning is intentionally log-only until the engine exposes
+      // a safe single-conversation prune entrypoint.
       const wasEphemeral = !finalActive.sessionKey;
       if (wasEphemeral && overlay.pruneEphemeralOnShutdown) {
         piLog.debug(
@@ -365,22 +371,22 @@ export default function losslessClaw(pi: ExtensionAPI, input?: ExtensionConfigIn
     }
   });
 
-  // A trivial command so users can confirm the extension loaded.
-  pi.registerCommand("lcm-status", {
-    description: "Show the current lossless-claw extension state",
-    handler: async (_args, ctx) => {
-      if (!active) {
-        ctx.ui.notify("lossless-claw: no active session bound", "info");
-        return;
-      }
-      const summary = [
-        `db: ${active.shared.dbPath}`,
-        `sessionKey: ${active.sessionKey ?? "<pending>"}`,
-        `sessionFile: ${active.sessionFile ?? "<ephemeral>"}`,
-        `bootstrapped: ${active.bootstrapped}`,
-      ].join("  ");
-      ctx.ui.notify(`lossless-claw — ${summary}`, "info");
-    },
+  registerLcmCommands({
+    pi,
+    config,
+    ensureReady: ensureBootstrapped,
+    getBinding: () => active
+      ? {
+          sessionKey: active.sessionKey,
+          sessionIdForEngine: active.sessionIdForEngine,
+          sessionFile: active.sessionFile,
+          bootstrapped: active.bootstrapped,
+          databasePath: active.shared.dbPath,
+          database: active.shared.database,
+          engine: active.shared.engine,
+          deps: active.shared.deps,
+        }
+      : undefined,
   });
 
   // Touching NOOP_LCM_LOGGER keeps the import alive even if Phase 1 does not
